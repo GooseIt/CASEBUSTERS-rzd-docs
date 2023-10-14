@@ -132,10 +132,18 @@ def check_parsed_document(parsed_document: dict):
          
     connection.commit()
     connection.close()
-     
-    print(res)
-    print(reason)
-    print("Пока без статистик")
+    
+    with open("accept.txt", "w") as file:
+        if res:
+            file.write("Документ корректен")
+        else:
+            file.write("Документ некорректен")
+            
+    with open("log.txt", "w") as file:
+        file.write(reason)
+        
+    with open("statistics.txt", "w") as file:
+        file.write("Пока без статистик")
 
 def _get_ruleset(doc_type: str, cursor) -> tuple[list[str], list[str]]:
     cursor.execute('''SELECT rules_names, rules_queries FROM doc_type_rules WHERE doc_type = ?''', (doc_type,))
