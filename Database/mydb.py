@@ -60,6 +60,66 @@ def init_db():
     conn.execute('''CREATE TABLE queue_inproc
                  (doc_id INTEGER PRIMARY KEY);''')
 
+    conn.execute('''CREATE TABLE table1_sender_receiver
+                 (
+                 table1_id INTEGER PRIMARY KEY,
+                 entry_num INTEGER,
+                 organization_id INTEGER,
+                 date DATE,
+                 operation_code INTEGER,
+                 sender_subd_id INTEGER,
+                 sender_plant_id INTEGER,
+                 receiver_subd_id INTEGER,
+                 receiver_plant_id INTEGER,
+                 account_id INTEGER,
+                 output_normal_unit INTEGER
+                 );''')
+    
+    conn.execute('''CREATE TABLE table2_goods_enumeration
+                 (
+                 table2_id INTEGER PRIMARY KEY,
+                 entry_num INTEGER,
+                 organization_id INTEGER,
+                 date DATE,
+                 account_id INTEGER,
+                 material_nom_id INTEGER,
+                 characteristic TEXT,
+                 factory_num INTEGER,
+                 net_num INTEGER,
+                 measurement_unit_id INTEGER,
+                 amount_demanded FLOAT,
+                 amount_granted FLOAT,
+                 price FLOAT,
+                 sum_without_NDS FLOAT,
+                 order_cart_num INTEGER,
+                 location TEXT,
+                 reg-party_num INTEGER
+                 );''')
+
+    conn.execute('''CREATE TABLE table_signatures
+                 (tablesign_id INTEGER PRIMARY KEY,
+                  organization_id INTEGER,
+                  official_id INTEGER,
+                  certificate_id INTEGER,
+                  signing_date DATE
+                 );''')
+
+    conn.execute('''CREATE TABLE material_assets
+                 (material_nom_id INTEGER PRIMARY KEY,
+                  name TEXT
+                 );''')
+
+    conn.execute('''CREATE TABLE account
+                 (account_id INTEGER PRIMARY KEY,
+                  account INTEGER,
+                  analythic_account_id INTEGER
+                 );''')
+
+    conn.execute('''CREATE TABLE measurement_units
+                 (measurement_unit_id INTEGER PRIMARY KEY,
+                  name TEXT
+                 );''')
+
     conn.commit()
     conn.close()
     
