@@ -21,7 +21,7 @@ M11_rules_text = [
 
 M11_rules_queries = [
     '''_check_organization(cfg['org_OKPO_code'], cfg['org_name'], cursor)''',
-    '''_check_subdivision(cfg['doc_organization_id'], cfg['sub_subdivision_be'], cfg['sub_subdivision_name'], cursor)''',
+    '''_check_subdivision(cfg['doc_organization_id'], cfg['sub_be_code'], cfg['sub_name'], cursor)''',
     'True',
     'True',
     'True',
@@ -45,4 +45,4 @@ mydb.set_doc_type_rules("ФМУ_76", FMU76_rules_text, FMU76_rules_queries)
 mydb.update_dir()
 mydb.check_dir()
 
-mydb.repr_db()
+# mydb.repr_db()

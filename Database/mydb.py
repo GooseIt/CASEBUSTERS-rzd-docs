@@ -5,6 +5,7 @@ from collections import defaultdict
 
 DB_NAME = 'mydatabase.db'
 INPUT_DIR = "../Dicts_in"
+PREBUILD_DIR = "../Dicts_existent"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -142,73 +143,83 @@ def set_doc_type_rules(doc_type: str, rules_names: list[str], rules_queries:list
     connection.commit()
     connection.close()
 
-def _get_inner_repres(parsed_document: dict, cursor) -> dict:
+def _process_subd_plant_data(subd_plant_strs: list[str], cfg: dict[str, tp.Any], table_prefix: str, cursor) -> None:
+    subd_strs = []
+    plant_strs = []
+    table_subd_id_key = f"{table_prefix}_subd_id"
+    table_plant_id_key = f"{table_prefix}_plant_id"
+
+    for s_p_s in subd_plant_strs:
+        digit_indices = [i for i in range(len(s_p_s)) if s_p_s[i].isdigit()]
+        last_digit_index = digit_indices[-1]
+        offset = 0
+
+        while digit_indices[-2 - offset] == digit_indices[-1 - offset] - 1:
+            offset += 1
+
+        subd_str = s_p_s[:last_digit_index - offset]
+        plant_str = s_p_s[last_digit_index - offset:]
+
+        subd_strs.append(subd_str)
+        plant_strs.append(plant_str)
+
+        subd_be = subd_str[:4]
+        subd_name = subd_str[5:]
+        plant_name = plant_str
+
+        if cfg["doc_organization_id"] is not None:
+            subd_id = _get_subdivision_id(cfg["doc_organization_id"], subd_be, subd_name, cursor)
+            cfg[table_subd_id_key].append(subd_id)
+        else:
+            cfg[table_subd_id_key].append(None)
+
+        if cfg[table_subd_id_key][-1] is not None:
+            plant_id = _get_plant_id(cfg["doc_organization_id"], cfg[table_subd_id_key][-1], plant_name, cursor)
+            cfg[table_plant_id_key].append(plant_id)
+        else:
+            cfg[table_plant_id_key].append(None)
+
+
+def _get_inner_representation(parsed_document: dict[str, list[str] | str], cursor) -> dict:
     parsed_document = defaultdict(str, parsed_document)
     cfg = defaultdict(str)
-    cfg['doc_doc_id'] = _get_doccount(cursor)
-    # print(cfg['doc_doc_id'])
-    
-    cfg['doc_doc_type'] = parsed_document['Тип формы'][0]
-    
-    if cfg['doc_doc_type'] == "М_11": # русская раскладка
-        cfg['doc_bill_num'] = parsed_document['ТРЕБОВАНИЕ-НАКЛАДНАЯ №'][0]
-        cfg['doc_doc_status'] = "В очереди на проверку"
-        cfg['doc_date'] = parsed_document['дата составления'][0]
-        
-        cfg['org_name'] = parsed_document['Организация'][0]
-        cfg['org_OKPO_code'] = parsed_document['код по ОКПО'][0]
-        
-        cfg['doc_demander_str'] = parsed_document['Затребовал '][0]
-        cfg['doc_permitter_str'] = parsed_document['Разрешил'][0]
-        cfg['doc_mediator_str'] =  parsed_document['Через кого '][0]
-        
-        cfg["sub_be_code"] = parsed_document['БЕ'][0]
-        cfg["sub_name"] = parsed_document['Структурное подразделение'][0]
-        
-        cfg['doc_organization_id'] = _get_organization_id(cfg['org_OKPO_code'] , cfg['org_name'], cursor)
-        if cfg['doc_organization_id'] is not None:
-            cfg['doc_subdivision_id'] = _get_subdivision_id(cfg['doc_organization_id'], cfg["sub_be_code"], cfg["sub_name"], cursor)
-        else:
-            cfg['doc_subdivision_id'] = None
-        
-        
-        subd_plant_strs = parsed_document['структурное подразделение отправителя']
-        subd_strs = []
-        plant_strs = []
-        for s_p_s in subd_plant_strs:
-            digit_indices = [i for i in range(len(s_p_s)) if s_p_s[i].isdigit()]
-            last_digit_indice = digit_indices[-1]
-            offset = 0
-            while digit_indices[-2-offset] == digit_indices[-1-offset] - 1:
-                offset += 1
-            # offset is the split point between structure and plant
-            subd_strs.append(s_p_s[:-offset])
-            plant_strs.append(s_p_s[-offset:])
-        
-        cfg['table1_sender_subd_id'] = []
-        cfg['table1_sender_plant_id'] = []
-        
-        for idx in range(len(plant_strs)):
-            subd_be = subd_strs[idx][:4]
-            subd_name = subd_strs[idx][5:]
-            plant_name = plant_strs[idx]
-            
-            if cfg['doc_organization_id'] is not None:
-                cfg['table1_sender_subd_id'].append(
-                _get_subdivision_id(cfg['doc_organization_id'], subd_be, subd_name, cursor)
+    cfg["doc_doc_id"] = _get_doccount(cursor)
+
+    cfg["doc_doc_type"] = parsed_document["Тип формы"][0]
+
+    if cfg["doc_doc_type"] == "М_11":  # русская раскладка
+        cfg["doc_bill_num"] = parsed_document["ТРЕБОВАНИЕ-НАКЛАДНАЯ №"][0]
+        cfg["doc_doc_status"] = "В очереди на проверку"
+        cfg["doc_date"] = parsed_document["дата составления"][0]
+
+        cfg["org_name"] = parsed_document["Организация"][0]
+        cfg["org_OKPO_code"] = parsed_document["код по ОКПО"][0]
+
+        cfg["doc_demander_str"] = parsed_document["Затребовал "][0]
+        cfg["doc_permitter_str"] = parsed_document["Разрешил"][0]
+        cfg["doc_mediator_str"] = parsed_document["Через кого "][0]
+
+        cfg["sub_be_code"] = parsed_document["БЕ"][0]
+        cfg["sub_name"] = parsed_document["Структурное подразделение"][0]
+
+        cfg["doc_organization_id"] = _get_organization_id(
+            cfg["org_OKPO_code"], cfg["org_name"], cursor
+        )
+        if cfg["doc_organization_id"] is not None:
+            cfg["doc_subdivision_id"] = _get_subdivision_id(
+                cfg["doc_organization_id"], cfg["sub_be_code"], cfg["sub_name"], cursor
             )
-            else:
-                cfg['table1_sender_subd_id'].append(None)
-            
-            if cfg['table1_sender_subd_id'][idx] is not None:
-                cfg['table1_sender_plant_id'].append(
-                    _get_plant_id(cfg['doc_organization_id'], cfg['table1_sender_subd_id'][idx], plant_name, cursor)
-                )
-            else:
-                cfg['table1_sender_plant_id'].append(None)
-                
-        cfg['table1_operation_code'] = parsed_document['код вида операции']
-            
+        else:
+            cfg["doc_subdivision_id"] = None
+
+        subd_plant_strs = parsed_document["структурное подразделение отправителя"]
+        _process_subd_plant_data(subd_plant_strs, cfg, "table1_sender", cursor)
+
+        subd_plant_strs = parsed_document["структурное подразделение получателя"]
+        _process_subd_plant_data(subd_plant_strs, cfg, "table1_receiver", cursor)
+
+        cfg["table1_operation_code"] = parsed_document["код вида операции"]
+
     return cfg
 
 def update_knowledge_with_parsed_document(parsed_document: dict):
@@ -236,6 +247,10 @@ def update_knowledge_with_parsed_document(parsed_document: dict):
         _add_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], "TODO - имя цеха", cursor)
         cfg["doc_plant_id"] = _get_plant_id(cfg['doc_organization_id'], cfg['doc_subdivision_id'], "TODO - имя цеха", cursor)
     connection.commit()
+    
+    for plant_id in cfg["table1_sender_plant_id"]:
+        _add_official(cfg["doc_organization_id"], cfg["doc_subdivision_id"], cfg["doc_demander_str"], cursor)
+        connection.commit()
     
     cursor.close() 
     connection.commit()
@@ -272,6 +287,8 @@ def check_parsed_document(parsed_document: dict):
         
     _dump_log_reject_to_stats(cfg['doc_doc_id'], cfg['doc_doc_type'], cfg["doc_date"], "Parsed", log_reject, cursor)
   
+    stats = _aggregate_stats(cursor)
+  
     connection.commit()
     cursor.close()  
     connection.close()
@@ -284,9 +301,13 @@ def check_parsed_document(parsed_document: dict):
             
     with open("log.txt", "a") as file:
         file.write(log_reject)
-        
-    with open("statistics.txt", "a") as file:
-        file.write("Пока без статистик")
+    
+    repr_stats = ""
+    for key, value in stats.items():
+        repr_stats += (key + ": " + str(value) + "\n")
+    
+    with open("statistics.txt", "w") as file:
+        file.write(repr_stats)
 
 def _get_ruleset(doc_type: str, cursor) -> tuple[list[str], list[str]]:
     cursor.execute('''SELECT rules_names, rules_queries FROM doc_type_rules WHERE doc_type = ?''', (doc_type,))
@@ -358,23 +379,36 @@ def _parse_person_string(person_string: str) -> tuple[str, str]:
     
     return person_post, person_name    
     
-def get_statistics(rules_incorrect_msges: list[str]) -> dict:
+def _get_statistics(rules_incorrect_msges: list[str]) -> dict:
     statistics = defaultdict(int)
     for rules in rules_incorrect_msges:
-        violated_rules = rules.split('\n')
+        violated_rules = rules.split('\n')[:-1]
         for rule in violated_rules:
             statistics[rule] += 1
     return statistics
+    
+def _aggregate_stats(cursor):
+    cursor.execute('SELECT log_reject FROM stats')
+    log_reject_values = [row[0] for row in cursor.fetchall()]
+    return _get_statistics(log_reject_values)
 
 ### checkers
 
 def _check_subdivision(organization_id: int, subdivision_be: str, subdivision_name: str, cursor):
+    if organization_id is None:
+        return False
     cursor.execute('''SELECT EXISTS(SELECT 1 FROM subdivisions_org_''' + str(organization_id) + ''' WHERE be_code = ? AND name = ?)''', (subdivision_be, subdivision_name))
     result = cursor.fetchone()[0]
-    return result is not None
+    # print("checking subd", result, subdivision_be, subdivision_name)
+    return result == 1
     
 def _check_person_in_plant(organization_id: int, subdivision_id: int, plant_id: int, person_str: str, cursor):
-    return False
+    if organization_id is None or subdivision_id is None:
+        return False
+    person_post, person_name = _parse_person_string(person_str)
+    cursor.execute('''SELECT EXISTS(SELECT 1 FROM officials_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + ''' WHERE post = ? AND name = ?)''', (person_post, person_name))
+    result = cursor.fetchone()[0]
+    return result == 1
 
 ### mandatory update
 
@@ -408,6 +442,15 @@ def _add_plant(organization_id: int, subdivision_id: int, plant_name: str, curso
     
     cursor.execute('''INSERT INTO plants_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + '''(plant_id, name) VALUES (?, ?)''', (new_id, plant_name))
 
+def _add_official(organization_id: int, subdivision_id: int, person_str: str, cursor):
+    cursor.execute('''SELECT COUNT(*) FROM officials_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id))
+    new_id = cursor.fetchone()[0]
+    
+    person_post, person_name = _parse_person_string(person_str)
+    print("MOST IMPORTANT", organization_id, subdivision_id, new_id, person_post, person_name)
+    
+    cursor.execute('''INSERT INTO officials_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + '''(official_id, post, name) VALUES (?, ?, ?)''', (new_id, person_post, person_name))
+
 def _init_subdivision_table(organization_id: int, cursor):
     # print("_init_subdivision_table", organization_id)
     cursor.execute('''CREATE TABLE subdivisions_org_''' + str(organization_id) + '''
@@ -422,6 +465,12 @@ def _init_plant_table(organization_id: int, subdivision_id: int, cursor):
     cursor.execute('''CREATE TABLE plants_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + '''
                  (
                  plant_id INTEGER PRIMARY KEY,
+                 name TEXT
+                 );''')
+    cursor.execute('''CREATE TABLE officials_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + '''
+                 (
+                 official_id INTEGER PRIMARY KEY,
+                 post TEXT,
                  name TEXT
                  );''')
 
@@ -491,7 +540,7 @@ def update_dir():
         os.remove("statistics.txt")
     except FileNotFoundError:
        pass
-    for file in os.listdir(INPUT_DIR):
+    for file in os.listdir(PREBUILD_DIR):
         with open(os.path.join(INPUT_DIR, file),'r') as f:
             s = f.read()
             #s = s.replace("\\xa0", "")
