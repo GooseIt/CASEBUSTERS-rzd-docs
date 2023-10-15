@@ -20,15 +20,16 @@ M11_rules_text = [
 ]
 
 M11_rules_queries = [
-    '_check_organization(organization_okpo, organization_name, cursor)',
-    '_check_subdivision(organization_id, subdivision_be, subdivision_name, cursor)',
+    '''_check_organization(cfg.org_OKPO_code, cfg.org_name, cursor)''',
+    '''_check_organization(cfg.org_OKPO_code, cfg.org_name, cursor)''',
+    '''_check_subdivision(cfg.org_organization_id, cfg.sub_subdivision_be, cfg.sub_subdivision_name, cursor)''',
     'True',
     'True',
     'True',
     'True',
-    'True', #'_check_person_in_plant(organization_id, sybdivison_id, plant_id, sender_str, cursor)',
-    'True', #'_check_person_in_plant(organization_id, sybdivison_id, plant_id, receiver_str, cursor)',
-    'True', #'_check_person_in_plant(organization_id, sybdivison_id, plant_id, mediator_str, cursor)'
+    '_check_person_in_plant(cfg.org_organization_id, cfg.sub_subdivison_id, cfg.pla_plant_id, cfg.org_sender_str, cursor)',
+    '_check_person_in_plant(cfg.org_organization_id, cfg.sub_subdivison_id, cfg.pla_plant_id, cfg.org_receiver_str, cursor)',
+    '_check_person_in_plant(cfg.org_organization_id, cfg.sub_subdivison_id, cfg.pla_plant_id, cfg.org_mediator_str, cursor)'
 ]
 
 mydb.set_doc_type_rules("М-11", M11_rules_text, M11_rules_queries)
