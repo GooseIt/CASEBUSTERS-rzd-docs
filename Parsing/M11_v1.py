@@ -1,114 +1,236 @@
-import pdfplumber
-import pandas as pd
-import numpy as np
-import fitz 
+import re
 from collections import defaultdict
 
-def parse_M11(path):
-    with pdfplumber.open(path) as pdf:
-        page = pdf.pages[0]
-        tables = page.extract_tables()
-    my_dict = defaultdict(list)
-    my_dict["код по ОКУД"] = tables[0][1]
-    my_dict["код по ОКПО"] = tables[0][2]
-    my_dict["БЕ"] = tables[0][3]
-    for i in range(2, len(tables[1])):
-        my_dict["дата составления"].append(tables[1][i][0])
-        my_dict["код вида операции"].append(tables[1][i][1])
-        my_dict["структурное подразделение отправителя"].append(tables[1][i][2])
-        my_dict["табельный номер отправителя"].append(tables[1][i][3])
-        my_dict["структурное подразделение получателя"].append(tables[1][i][4])
-        my_dict["табельный номер получателя"].append(tables[1][i][5])
-        my_dict["корреспондирующий счет -> счет, субсчет"].append(tables[1][i][6])
-        my_dict["корреспондирующий счет -> код аналитического учета"].append(tables[1][i][7])
-        my_dict["Учетная единица выпуска продукции (работ, услуг)"].append(tables[1][i][8])
-    for i in range(3, len(tables[2])):
-        my_dict["корреспондирующий счет"].append(tables[2][i][0])
-        my_dict["материальные ценности -> наименование"].append(tables[2][i][1])
-        my_dict["материальные ценности -> номенклатурный номер"].append(tables[2][i][2])
-        my_dict["характеристика"].append(tables[2][i][3])
-        my_dict["заводской номер"].append(tables[2][i][4])
-        my_dict["инвертарный номер"].append(tables[2][i][5])
-        my_dict["сетевой номер"].append(tables[2][i][6])
-        my_dict["единица измерения -> код"].append(tables[2][i][7])
-        my_dict["единица измерения -> наименование"].append(tables[2][i][8])
-        my_dict["количество -> затребовано"].append(tables[2][i][9])
-        my_dict["количество -> отпущено"].append(tables[2][i][10])
-        my_dict["цена, руб. коп."].append(tables[2][i][11])
-        my_dict["сумма без учета НДС, руб. коп"].append(tables[2][i][12])
-        my_dict["порядковый номер по складской картотеке"].append(tables[2][i][13])
-        my_dict["местонахождение"].append(tables[2][i][14])
-        my_dict["Регистрационный номер партии товара, подлежащего прослеживаемости"].append(tables[2][i][15])
-    pdf_document = fitz.open(path)
-    text_array = []
-    for page in pdf_document:
-        blocks = page.get_text('dict')['blocks']
-        for block_index, block in enumerate(blocks):
-            for line in block['lines']:
-                for span in line['spans']:
-                    text_array.append(span['text'])
-    data = {}
-    for i in range(len(text_array)):
-        text = text_array[i]
-        if ("ТРЕБОВАНИЕ-НАКЛАДНАЯ №" in text and (1 not in data.keys())):
-            data[1] = text.split()[-1]
-        if (text == 'Организация' and (2 not in data.keys())):
-            data[2] = text_array[i+1]
-        if (text == 'подразделение' and (3 not in data.keys())):
-            counter = i+1
-            data[3] = ""
-            while not text_array[counter].isdigit():
-                data[3] += text_array[counter] + ' '
-                counter+=1
-        if (text == 'Через кого ' and (13 not in data.keys())):
-            counter = i+1
-            data[13] = ""
-            while (text_array[counter] != 'Затребовал '):
-                data[13] += text_array[counter] + ' '
-                counter+=1
-        if (text == 'Затребовал ' and (11 not in data.keys())):
-            counter = i+1
-            data[11] = ""
-            while(text_array[counter] != '\xa0\xa0\xa0\xa0Разрешил'):
-                data[11] += text_array[counter] + ' '
-                counter+=1
-        if (text == '\xa0\xa0\xa0\xa0Разрешил' and (12 not in data.keys())):
-            counter = i+1
-            data[12] = ""
-            while(text_array[counter] != 'Материальные'):
-                data[12] += text_array[counter] + ' '
-                counter+=1
-        if (text == 'Отпустил' and (25 not in data.keys())):
-            counter = i+1
-            data[25] = ""
-            while(text_array[counter] != '(должность)'):
-                data[25] += text_array[counter] + ' '
-                counter+=1
-        if (text == '(должность)' and (23 not in data.keys())):
-            counter = i+1
-            data[23] = ""
-            while(text_array[counter] != '(подпись)'):
-                data[23] += text_array[counter] + ' '
-                counter+=1
-        if (text == '(подпись)' and (26 not in data.keys())):
-            counter = i+1
-            data[26] = ""
-            while(text_array[counter] != '(расшифровка подписи)'):
-                data[26] += text_array[counter] + ' '
-                counter+=1
-    my_dict['ТРЕБОВАНИЕ-НАКЛАДНАЯ №'].append(data[1])
-    my_dict['Организация'].append(data[2])
-    my_dict['Структурное подразделение'].append(data[3])
-    my_dict['Через кого '].append(data[13])
-    my_dict['Затребовал '].append(data[11])
-    my_dict['Разрешил'].append(data[12])
-    my_dict['отпустил -> должность'].append(data[25])
-    my_dict['отпустил -> подпись'].append(data[23])
-    my_dict['отпустил -> расшифровка подписи'].append(data[26])
-    
+import fitz
+
+
+template_line_tables = [
+    [[{"text": "Коды"}],
+     [{"text": "[\S\s]*", "save": "код по ОКУД"}],
+     [{"text": "[\S\s]*", "save": "код по ОКПО"}],
+     [{"text": "[\S\s]*", "save": "БЕ"}]],
+    [
+        [
+                {"text": "Дата\nсоста\-\nвления"},
+                {"text": "Код вида\nоперации"},
+                {"text": "Отправитель"},
+                {"text": None},
+                {"text": "Получатель"},
+                {"text": None},
+                {"text": "Корреспондирующий счет"},
+                {"text": None},
+                {"text": "Учетная\nединица\nвыпуска\nпродукции\n\(работ,\nуслуг\)"},
+        ],
+        [
+                {"text": None},
+                {"text": None},
+                {"text": "структурное\nподразделение"},
+                {"text": "табельный\nномер\nМОЛ \(ЛОС\)"},
+                {"text": "структурное\nподразделение"},
+                {"text": "табельный\nномер\nМОЛ \(ЛОС\)"},
+                {"text": "счет, субсчет"},
+                {"text": "код аналити\-\nческого учета"},
+                {"text": None},
+        ],
+        [
+                {"text": "[\S\s]*",
+                        "save": "дата составления"},
+                {"text": "[\S\s]*",
+                        "save": "код вида операции"},
+                {"text": "[\S\s]*",
+                        "save": "структурное подразделение отправителя"},
+                {"text": "[\S\s]*",
+                        "save": "табельный номер отправителя"},
+                {"text": "[\S\s]*",
+                        "save": "структурное подразделение получателя"},
+                {"text": "[\S\s]*",
+                        "save": "табельный номер получателя"},
+                {"text": "[\S\s]*",
+                        "save": "корреспондирующий счет -> счет, субсчет"},
+                {"text": "[\S\s]*",
+                        "save": "корреспондирующий счет -> код аналитического учета"},
+                {"text": "[\S\s]*",
+                        "save": "Учетная единица выпуска продукции (работ, услуг)"},
+        ],
+    ],
+    [
+        [
+                {"text": "Коррес\-\nпонди\-\nрующий\nсчет"},
+                {"text": "Материальные\nценности"},
+                {"text": None},
+                {"text": "Харак\-\nтеристи\-\nка"},
+                {"text": "Завод\-\nской\nномер"},
+                {"text": "Инвен\-\nтарный\nномер"},
+                {"text": "Сетевой\nномер"},
+                {"text": "Единица\nизмерения"},
+                {"text": None},
+                {"text": "Количество"},
+                {"text": None},
+                {"text": "Цена,\nруб\.\nкоп\."},
+                {"text": "Сумма\nбез\nучета\nНДС,\nруб\. коп\."},
+                {"text": "Порядко\-\nвый\nномер по\nсклад\-\nской\nкартотеке"},
+                {"text": "Место\-\nнахож\-\nдение"},
+                {"text": "Регистра\-\nционный\nномер\nпартии\nтовара,\nподлежа\-\nщего\nпрослежи\-\nваемости"},
+        ],
+        [
+                {"text": None},
+                {"text": "наиме\-\nнование"},
+                {"text": "номенк\-\nлатурный\nномер"},
+                {"text": None},
+                {"text": None},
+                {"text": None},
+                {"text": None},
+                {"text": "код"},
+                {"text": "наиме\-\nнова\-\nние"},
+                {"text": "затре\-\nбова\-\nно"},
+                {"text": "отпу\-\nщено"},
+                {"text": None},
+                {"text": None},
+                {"text": None},
+                {"text": None},
+                {"text": None},
+        ],
+        [
+                {"text": "1"},
+                {"text": "2"},
+                {"text": "3"},
+                {"text": "4"},
+                {"text": "5"},
+                {"text": "6"},
+                {"text": "7"},
+                {"text": "8"},
+                {"text": "9"},
+                {"text": "10"},
+                {"text": "11"},
+                {"text": "12"},
+                {"text": "13"},
+                {"text": "14"},
+                {"text": "15"},
+                {"text": "16"},
+        ],
+        [
+                {"text": "[\S\s]*",
+                 "save": "корреспондирующий счет (вторая таблица)"},
+                {"text": "[\S\s]*",
+                "save": "материальные ценности -> наименование"},
+                {"text": "[\S\s]*"},
+                {"text": "[\S\s]*",
+                        "save": "материальные ценности -> номенклатурный номер"},
+                {"text": "[\S\s]*",
+                        "save": "характеристика"},
+                {"text": "[\S\s]*",
+                        "save": "заводской номер"},
+                {"text": "[\S\s]*",
+                        "save": "инвентарный номер"},
+                {"text": "[\S\s]*",
+                        "save": "сетевой номер"},
+                {"text": "[\S\s]*",
+                        "save": "единица измерения -> код"},
+                {"text": "[\S\s]*",
+                        "save": "единица измерения -> наименование"},
+                {"text": "[\S\s]*",
+                        "save": "количество -> затребовано"},
+                {"text": "[\S\s]*",
+                        "save": "количество -> отпущено"},
+                {"text": "[\S\s]*",
+                        "save": "цена, руб. коп."},
+                {"text": "[\S\s]*",
+                        "save": "сумма без учета НДС, руб. коп"},
+                {"text": "[\S\s]*",
+                        "save": "порядковый номер по складской картотеке"},
+                {"text": "[\S\s]*",
+                        "save": "местонахождение"},
+                {"text": "[\S\s]*",
+                        "save": "Регистрационный номер партии товара, подлежащего прослеживаемости"},
+        ],
+    ],
+]
+
+
+def parse_M11(path: str) -> dict[str, list[str] | str]:
+    my_dict: dict[str, list[str] | str] = defaultdict(list)
+    with fitz.open(path) as doc:
+        for table_index, (table, template_table) in enumerate(zip(doc[0].find_tables(), template_line_tables)):
+            for line_index, line in enumerate(table.extract()):
+                template_line = template_table[line_index] if line_index < len(template_table) else template_table[-1]
+                for cell, template_cell in zip(line, template_line):
+                    if (template_cell['text'] is None and cell is not None) or \
+                        (template_cell['text'] is not None and cell is None) or \
+                        (template_cell['text'] is not None and not re.fullmatch(template_cell['text'], cell)):
+                        raise Exception('    incorrect cell text! "%s" doesn\'t match to "%s"', cell, template_cell['text'])
+                    elif 'save' in template_cell:
+                        if template_cell["save"] not in my_dict:
+                            my_dict[template_cell["save"]] = [cell]
+                        else:
+                            my_dict[template_cell["save"]].append(cell)
+        text_array = []
+        for page in doc:
+            blocks = page.get_text("dict")["blocks"]
+            for block in blocks:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        text_array.append(span["text"])
+        data = {}
+        for i in range(len(text_array)):
+            text = text_array[i]
+            if "ТРЕБОВАНИЕ-НАКЛАДНАЯ №" in text and (1 not in data.keys()):
+                data[1] = text.split()[-1]
+            if text == "Организация" and (2 not in data.keys()):
+                data[2] = text_array[i + 1]
+            if text == "подразделение" and (3 not in data.keys()):
+                counter = i + 1
+                data[3] = ""
+                while not text_array[counter].isdigit():
+                    data[3] += text_array[counter] + " "
+                    counter += 1
+            if (text == "Через кого " or text == "Через кого") and (13 not in data.keys()):
+                counter = i + 1
+                data[13] = ""
+                while text_array[counter] != "Затребовал ":
+                    data[13] += text_array[counter] + " "
+                    counter += 1
+            if text == "Затребовал " and (11 not in data.keys()):
+                counter = i + 1
+                data[11] = ""
+                while text_array[counter] != "\xa0\xa0\xa0\xa0Разрешил":
+                    data[11] += text_array[counter] + " "
+                    counter += 1
+            if text == "\xa0\xa0\xa0\xa0Разрешил" and (12 not in data.keys()):
+                counter = i + 1
+                data[12] = ""
+                while text_array[counter] != "Материальные":
+                    data[12] += text_array[counter] + " "
+                    counter += 1
+            if text == "Отпустил" and (25 not in data.keys()):
+                counter = i + 1
+                data[25] = ""
+                while text_array[counter] != "(должность)":
+                    data[25] += text_array[counter] + " "
+                    counter += 1
+            if text == "(должность)" and (23 not in data.keys()):
+                counter = i + 1
+                data[23] = ""
+                while text_array[counter] != "(подпись)":
+                    data[23] += text_array[counter] + " "
+                    counter += 1
+            if text == "(подпись)" and (26 not in data.keys()):
+                counter = i + 1
+                data[26] = ""
+                while text_array[counter] != "(расшифровка подписи)":
+                    data[26] += text_array[counter] + " "
+                    counter += 1
+        my_dict["ТРЕБОВАНИЕ-НАКЛАДНАЯ №"].append(data[1])
+        my_dict["Организация"].append(data[2])
+        my_dict["Структурное подразделение"].append(data[3])
+        my_dict["Через кого "].append(data[13])
+        my_dict["Затребовал "].append(data[11])
+        my_dict["Разрешил"].append(data[12])
+        my_dict["отпустил -> должность"].append(data[25])
+        my_dict["отпустил -> подпись"].append(data[23])
+        my_dict["отпустил -> расшифровка подписи"].append(data[26])
+
     for key, value in my_dict.items():
         my_dict[key] = [x.replace("\n", "") for x in value]
-            
+
     my_dict['Тип формы'] = ["М_11"] # русская раскладка
     return my_dict
-
