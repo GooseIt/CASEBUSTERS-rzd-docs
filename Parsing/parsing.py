@@ -1,6 +1,7 @@
 import os
 
-from M11_v1 import parse_M11
+from Parsing.M11 import parse_M11
+from Parsing.FMU76 import parse_FMU76
 
 INPUT_DIR = "../Files_in"
 OUTPUT_DIR = "../Dicts_in"
@@ -14,7 +15,10 @@ def main() -> None:
         try:
             res = parse_M11(mypath)
         except:
-            res = "Parsing failed"
+            try:
+                res = parse_FMU76(mypath)
+            except:
+                res = "Parsing failed"
 
         with open(f"{OUTPUT_DIR}/{path_name[:-4]}.txt", "w") as f:
             f.write(str(res))
