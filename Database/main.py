@@ -10,10 +10,6 @@ input_example = eval("""{'номер накладной': 'ТРЕБОВАНИЕ-
 M11_rules_text = [
     'Некорректны название или код ОКПО организации',
     'Некорректны название или код БЕ подразделения',
-    'Не существует кода подразделения отправителя',
-    'Не существует цеха отправителя',
-    'Не существует кода подразделения получателя',
-    'Не существует цеха получателя',
     'В цехе нет отпустившего работника',
     'В цехе нет затребовавшего работника',
     'В цехе нет работника, через кого прошло списание',
@@ -22,10 +18,6 @@ M11_rules_text = [
 M11_rules_queries = [
     '''_check_organization(cfg['org_OKPO_code'], cfg['org_name'], cursor)''',
     '''_check_subdivision(cfg['doc_organization_id'], cfg['sub_be_code'], cfg['sub_name'], cursor)''',
-    'True',
-    'True',
-    'True',
-    'True',
     '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_sender_str'], cursor)''',
     '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_receiver_str'], cursor)''',
     '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_mediator_str'], cursor)'''

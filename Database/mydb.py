@@ -280,7 +280,7 @@ def check_parsed_document(parsed_document: dict):
     rules_mistake_messages, rules_queries = _get_ruleset(cfg['doc_doc_type'], cursor)
     
     for idx in range(len(rules_mistake_messages)):
-        if not eval(rules_queries[idx]): # тут будет добавлена защита от sql-инъекций
+        if not eval(rules_queries[idx]): # здесь может (и должна быть) встроена защита от инъекций
             res = False
             log_reject += rules_mistake_messages[idx]
             log_reject += '\n'
