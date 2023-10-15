@@ -20,21 +20,29 @@ M11_rules_text = [
 ]
 
 M11_rules_queries = [
-    '''_check_organization(cfg.org_OKPO_code, cfg.org_name, cursor)''',
-    '''_check_organization(cfg.org_OKPO_code, cfg.org_name, cursor)''',
-    '''_check_subdivision(cfg.org_organization_id, cfg.sub_subdivision_be, cfg.sub_subdivision_name, cursor)''',
+    '''_check_organization(cfg['org_OKPO_code'], cfg['org_name'], cursor)''',
+    '''_check_subdivision(cfg['doc_organization_id'], cfg['sub_subdivision_be'], cfg['sub_subdivision_name'], cursor)''',
     'True',
     'True',
     'True',
     'True',
-    '_check_person_in_plant(cfg.org_organization_id, cfg.sub_subdivison_id, cfg.pla_plant_id, cfg.org_sender_str, cursor)',
-    '_check_person_in_plant(cfg.org_organization_id, cfg.sub_subdivison_id, cfg.pla_plant_id, cfg.org_receiver_str, cursor)',
-    '_check_person_in_plant(cfg.org_organization_id, cfg.sub_subdivison_id, cfg.pla_plant_id, cfg.org_mediator_str, cursor)'
+    '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_sender_str'], cursor)''',
+    '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_receiver_str'], cursor)''',
+    '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_mediator_str'], cursor)'''
 ]
 
+FMU76_rules_text = []
+
+FMU76_rules_queries = []
+
 mydb.set_doc_type_rules("М-11", M11_rules_text, M11_rules_queries)
+mydb.set_doc_type_rules("ФМУ-76", FMU76_rules_text, FMU76_rules_queries)
 
-mydb.update_knowledge_with_parsed_document({})
+#mydb.update_knowledge_with_parsed_document({})
 
-mydb.check_parsed_document(input_example)
+#mydb.check_parsed_document(input_example)
 
+mydb.update_dir()
+mydb.check_dir()
+
+mydb.repr_db()

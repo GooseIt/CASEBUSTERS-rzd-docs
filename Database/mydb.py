@@ -1,9 +1,10 @@
 import os
 import ast
 import sqlite3
+from collections import defaultdict
 
 DB_NAME = 'mydatabase.db'
-INPUT_DIR = "files_in"
+INPUT_DIR = "../Dicts_in"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -29,7 +30,7 @@ def init_db():
                  bill_num INTEGER,
                  organization_id INTEGER,
                  subdivision_id INTEGER,
-                 date DATE,
+                 date TEXT,
                  table1_id INTEGER,
                  table2_id INTEGER,
                  sender_id INTEGER,
@@ -65,7 +66,7 @@ def init_db():
                  table1_id INTEGER PRIMARY KEY,
                  entry_num INTEGER,
                  organization_id INTEGER,
-                 date DATE,
+                 date TEXT,
                  operation_code INTEGER,
                  sender_subd_id INTEGER,
                  sender_plant_id INTEGER,
@@ -80,7 +81,7 @@ def init_db():
                  table2_id INTEGER PRIMARY KEY,
                  entry_num INTEGER,
                  organization_id INTEGER,
-                 date DATE,
+                 date TEXT,
                  account_id INTEGER,
                  material_nom_id INTEGER,
                  characteristic TEXT,
@@ -93,7 +94,7 @@ def init_db():
                  sum_without_NDS FLOAT,
                  order_cart_num INTEGER,
                  location TEXT,
-                 reg-party_num INTEGER
+                 reg_party_num INTEGER
                  );''')
 
     conn.execute('''CREATE TABLE table_signatures
@@ -120,6 +121,14 @@ def init_db():
                   name TEXT
                  );''')
 
+    conn.execute('''CREATE TABLE stats
+                 (doc_id INTEGER PRIMARY KEY,
+                  doc_type TEXT,
+                  date TEXT,
+                  preproc_status TEXT,
+                  log_reject TEXT
+                 );''')
+
     conn.commit()
     conn.close()
     
@@ -134,33 +143,66 @@ def set_doc_type_rules(doc_type: str, rules_names: list[str], rules_queries:list
     connection.close()
 
 def _get_inner_repres(parsed_document: dict, cursor) -> dict:
-    cfg = {}
-    cfg['doc_bil_num'] = parsed_document['номер накладной']
+    parsed_document = defaultdict(str, parsed_document)
+    cfg = defaultdict(str)
+    cfg['doc_doc_id'] = _get_doccount(cursor)
+    # print(cfg['doc_doc_id'])
+    
+    cfg['doc_doc_type'] = "М-11" # TODO - на парсинге Никиты
+    cfg['doc_bill_num'] = parsed_document['номер накладной']
+    cfg['doc_doc_status'] = "В очереди на проверку"
     cfg['doc_date'] = parsed_document['дата составления']
     cfg['org_name'] = parsed_document['организация']
     cfg['org_OKPO_code'] = parsed_document['код по ОКПО']
-    cfg['org_sender_str'] = parsed_document['структурное подразделение отправителя']
-    cfg['org_receiver_str'] = parsed_document['структурное подразделение получателя']
-    cfg['org_mediator_str'] =  parsed_document.get('через кого (может быть не только фио)', '')
+    
+    cfg['doc_sender_str'] = parsed_document['структурное подразделение отправителя']
+    cfg['doc_receiver_str'] = parsed_document['структурное подразделение получателя']
+    cfg['doc_mediator_str'] =  parsed_document['через кого (может быть не только фио)']
+    
+    cfg["sub_be_code"] = parsed_document['код БЕ']
+    cfg["sub_name"] = parsed_document['структурное подразделение']
+    
     cfg['doc_organization_id'] = _get_organization_id(cfg['org_OKPO_code'] , cfg['org_name'], cursor)
-    cfg['doc_subdivision_id'] = _get_subdivision_id(cfg['doc_organization_id'], parsed_document['код БЕ'], parsed_document['структурное подразделение'], cursor) 
-    cfg['doc_plant_id'] = _get_plant_id(cfg['doc_organization_id'], cfg['doc_subdivision_id'], plant_name, cursor)
+    if cfg['doc_organization_id'] is not None:
+        cfg['doc_subdivision_id'] = _get_subdivision_id(cfg['doc_organization_id'], cfg["sub_be_code"], cfg["sub_name"], cursor)
+    else:
+        cfg['doc_subdivision_id'] = None
+    if cfg['doc_subdivision_id'] is not None:
+        cfg['doc_plant_id'] = _get_plant_id(cfg['doc_organization_id'], cfg['doc_subdivision_id'], "TODO - имя цеха", cursor)
+    else:
+        cfg['doc_plant_id'] = None
 
+    cfg['sub_subdivision_be'] = "smth" # TODO
+    cfg['sub_subdivision_name'] = "smth" # TODO
+    
     return cfg
 
 def update_knowledge_with_parsed_document(parsed_document: dict):
     connection = sqlite3.connect(DB_NAME)
     cursor = connection.cursor()
     
-    _add_organization('00083262', 'ОАО "Никелин"', cursor)
+    cfg = _get_inner_repres(parsed_document, cursor)
+    
+    # mandatory
+    _add_document_id(cfg['doc_doc_id'], cfg['doc_doc_type'], cursor)
     connection.commit()
     
-    _add_subdivision(0, '4172', 'Дирекция социальной сферы- структурное подразделение СКЖД - филиала ОАО "Никелин"', cursor)
-    connection.commit()
-    
-    _add_plant(0, 0, '001 Склад материалов', cursor)
-    connection.commit()
+    if cfg["doc_organization_id"] is None:
+        _add_organization(cfg['org_OKPO_code'] , cfg['org_name'], cursor)
+        cfg["doc_organization_id"] = _get_organization_id(cfg['org_OKPO_code'] , cfg['org_name'], cursor)
         
+    connection.commit()
+    
+    if cfg["doc_subdivision_id"] is None:
+        _add_subdivision(cfg['doc_organization_id'], cfg["sub_be_code"], cfg["sub_name"], cursor)
+        cfg["doc_subdivision_id"] = _get_subdivision_id(cfg['doc_organization_id'], cfg["sub_be_code"], cfg["sub_name"], cursor)
+    connection.commit()
+    
+    if cfg["doc_plant_id"] is None:
+        _add_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], "TODO - имя цеха", cursor)
+        cfg["doc_plant_id"] = _get_plant_id(cfg['doc_organization_id'], cfg['doc_subdivision_id'], "TODO - имя цеха", cursor)
+    connection.commit()
+    
     cursor.close() 
     connection.commit()
     connection.close()
@@ -179,43 +221,25 @@ def check_parsed_document(parsed_document: dict):
     
     cfg = _get_inner_repres(parsed_document, cursor)
     
-    doc_status = "В очереди на проверку"
+    # mandatory
+    _add_document_id(cfg['doc_doc_id'], cfg['doc_doc_type'], cursor)
+    connection.commit()
     
-    
-    _add_document_id(doc_id, doc_type, cursor)
-    
-    reason = ""
+    log_reject = ""
     res = True
     
-    if doc_type == "М-11":
+    rules_mistake_messages, rules_queries = _get_ruleset(cfg['doc_doc_type'], cursor)
     
-        bill_num = parsed_document["номер накладной"]
+    for idx in range(len(rules_mistake_messages)):
+        if not eval(rules_queries[idx]): # тут будет добавлена защита от sql-инъекций
+            res = False
+            log_reject += rules_mistake_messages[idx]
+            log_reject += '\n'
         
-        # organization
-        organization_okpo = parsed_document['код по ОКПО']
-        organization_name = parsed_document['организация']
-        organization_id = _get_organization_id(organization_okpo, organization_name, cursor) # may be none
-        
-        rules_mistake_messages, rules_queries = _get_ruleset(doc_type, cursor)
-        
-        # subdivision
-        subdivision_be = parsed_document['код БЕ']
-        subdivision_name = parsed_document['структурное подразделение']
-        
-        date = parsed_document['дата составления']
-        
-        for idx in range(len(rules_mistake_messages)):
-            if not eval(rules_queries[idx]): # тут будет добавлена защита от sql-инъекций
-                res = False
-                reason += rules_mistake_messages[idx]
-            
-    elif doc_type == "ФМУ-76":
-        pass
-    else:
-        raise ValueError("Неверный тип документа. Это должно детектироваться на стадии предобработки")
-      
-    cursor.close()    
+    _dump_log_reject_to_stats(cfg['doc_doc_id'], cfg['doc_doc_type'], cfg["doc_date"], "Parsed", log_reject, cursor)
+  
     connection.commit()
+    cursor.close()  
     connection.close()
     
     with open("accept.txt", "a") as file:
@@ -225,7 +249,7 @@ def check_parsed_document(parsed_document: dict):
             file.write("Документ некорректен")
             
     with open("log.txt", "a") as file:
-        file.write(reason)
+        file.write(log_reject)
         
     with open("statistics.txt", "a") as file:
         file.write("Пока без статистик")
@@ -236,34 +260,47 @@ def _get_ruleset(doc_type: str, cursor) -> tuple[list[str], list[str]]:
     rules_texts = result[0].split('\n')
     rules_queries = result[1].split('\n')
     return rules_texts, rules_queries
-                  
-def _add_document_id(doc_id: int, doc_type: str, cursor):
-    cursor.execute('''INSERT INTO documents (doc_id, doc_type)
-                  VALUES (?, ?)''', (doc_id, doc_type))
 
 def _check_organization(organization_okpo: str, organization_name: str, cursor):
     cursor.execute('''SELECT EXISTS(SELECT 1 FROM organizations WHERE OKPO_code = ? AND name = ?)''', (organization_okpo, organization_name))
     result = cursor.fetchone()[0]
     return result is not None
+    
+def _dump_log_reject_to_stats(doc_id: int, doc_type: str, date: str, preproc_status: str, log_reject: str, cursor):
+    cursor.execute('''INSERT INTO stats (doc_id, doc_type, date, preproc_status, log_reject)
+                      VALUES (?, ?, ?, ?, ?)''', (doc_id, doc_type, date, preproc_status, log_reject))
 
 ### getters
 
+def _get_doccount(cursor):
+    cursor.execute('''SELECT COUNT(*) FROM documents''')
+    doccount = cursor.fetchone()[0]
+    return doccount
+
 def _get_organization_id(organization_okpo: str, organization_name: str, cursor):
     cursor.execute('''SELECT organization_id FROM organizations WHERE OKPO_code = ? AND name = ?;''', (organization_okpo, organization_name))
-    result = cursor.fetchone()[0]
-    return result
+    result = cursor.fetchone()
+    if result is None:
+        return None
+    return result[0]
 
 def _get_subdivision_id(organization_id: int, subdivision_be: str, subdivision_name: str, cursor):
-    print("_get_subdivision_id", organization_id, subdivision_be, subdivision_name)
+    # print("_get_subdivision_id", organization_id, subdivision_be, subdivision_name)
     cursor.execute('''SELECT subdivision_id FROM subdivisions_org_''' + str(organization_id) + ''' WHERE be_code = ? AND name = ?;''', (subdivision_be, subdivision_name))
-    result = cursor.fetchone()[0]
-    return result
+    result = cursor.fetchone()
+    if result is None:
+        return None
+    return result[0]
 
 def _get_plant_id(organization_id: int, subdivision_id: int, plant_name: str, cursor):
-    cursor.execute('''SELECT subdivision_id FROM plants_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + ''' WHERE plant_name = ?;''', (plant_name, ))
-    result = cursor.fetchone()[0]
-    return result
+    cursor.execute('''SELECT plant_id FROM plants_org_''' + str(organization_id) + '''_subd_''' + str(subdivision_id) + ''' WHERE name = ?;''', (plant_name, ))
+    result = cursor.fetchone()
+    if result is None:
+        return None
+    return result[0]
     
+### misc    
+
 def _parse_person_string(person_string: str) -> tuple[str, str]:
     word_list = person_string.split(" ")
     if len(word_list) == 0:
@@ -286,6 +323,14 @@ def _parse_person_string(person_string: str) -> tuple[str, str]:
         person_post = " ".join(word_list[:-fio_words])
     
     return person_post, person_name    
+    
+def get_statistics(rules_incorrect_msges: list[str]) -> dict:
+    statistics = defaultdict(int)
+    for rules in rules_incorrect_msges:
+        violated_rules = rules.split('\n')
+        for rule in violated_rules:
+            statistics[rule] += 1
+    return statistics
 
 ### checkers
 
@@ -296,6 +341,12 @@ def _check_subdivision(organization_id: int, subdivision_be: str, subdivision_na
     
 def _check_person_in_plant(organization_id: int, subdivision_id: int, plant_id: int, person_str: str, cursor):
     return False
+
+### mandatory update
+
+def _add_document_id(doc_id: int, doc_type: str, cursor):
+    cursor.execute('''INSERT INTO documents (doc_id, doc_type)
+                  VALUES (?, ?)''', (doc_id, doc_type))
 
 ### update functionality
 
@@ -340,11 +391,45 @@ def _init_plant_table(organization_id: int, subdivision_id: int, cursor):
                  name TEXT
                  );''')
 
+### repr
 
-def check_dir() -> None:
-    os.remove("accept.txt")
-    os.remove("log.txt")
-    os.remove("statistics.txt")
+def repr_table(table_name: str, cursor):
+    cursor.execute('SELECT * FROM ' + table_name)
+    # Fetch all the rows as a list of tuples
+    rows = cursor.fetchall()
+    # Print the rows in a human-readable format
+    for row in rows:
+        print(row)
+        
+def repr_db():
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+    
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = cursor.fetchall()
+    
+    for table in tables:
+        print(table[0])
+        repr_table(table[0], cursor)
+    
+    cursor.close()
+    connection.close()
+
+### main
+
+def check_dir():
+    try:
+        os.remove("accept.txt")
+    except FileNotFoundError:
+       pass
+    try:
+        os.remove("log.txt")
+    except FileNotFoundError:
+       pass
+    try:
+        os.remove("statistics.txt")
+    except FileNotFoundError:
+       pass
     for file in os.listdir(INPUT_DIR):
         with open(os.path.join(INPUT_DIR, file),'r') as f:
             s = f.read()
@@ -354,4 +439,28 @@ def check_dir() -> None:
             s = s.replace("\\xa0", '"')
             data = ast.literal_eval(s)
             check_parsed_document(data)
+            
+
+def update_dir():
+    try:
+        os.remove("accept.txt")
+    except FileNotFoundError:
+       pass
+    try:
+        os.remove("log.txt")
+    except FileNotFoundError:
+       pass
+    try:
+        os.remove("statistics.txt")
+    except FileNotFoundError:
+       pass
+    for file in os.listdir(INPUT_DIR):
+        with open(os.path.join(INPUT_DIR, file),'r') as f:
+            s = f.read()
+            s = s.replace("\\xa0", "")
+            s = s.replace("'","\\xa0")
+            s = s.replace('"',"'")
+            s = s.replace("\\xa0", '"')
+            data = ast.literal_eval(s)
+            update_knowledge_with_parsed_document(data)
 
