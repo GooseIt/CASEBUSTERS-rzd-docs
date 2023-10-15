@@ -19,7 +19,7 @@ template_line_tables = [
                 {"text": None},
                 {"text": "Корреспондирующий счет"},
                 {"text": None},
-                {"text": "Учетная\nединица\nвыпуска\nпродукции\n\(работ,\nуслуг\)"},
+                {"text": "Учетная\nединица\nвыпуска\nпродукции\n\(работ,\nуслуг\)"}
         ],
         [
                 {"text": None},
@@ -30,7 +30,7 @@ template_line_tables = [
                 {"text": "табельный\nномер\nМОЛ \(ЛОС\)"},
                 {"text": "счет, субсчет"},
                 {"text": "код аналити\-\nческого учета"},
-                {"text": None},
+                {"text": None}
         ],
         [
                 {"text": "[\S\s]*",
@@ -50,7 +50,7 @@ template_line_tables = [
                 {"text": "[\S\s]*",
                         "save": "корреспондирующий счет -> код аналитического учета"},
                 {"text": "[\S\s]*",
-                        "save": "Учетная единица выпуска продукции (работ, услуг)"},
+                        "save": "Учетная единица выпуска продукции (работ, услуг)"}
         ],
     ],
     [
@@ -70,7 +70,7 @@ template_line_tables = [
                 {"text": "Сумма\nбез\nучета\nНДС,\nруб\. коп\."},
                 {"text": "Порядко\-\nвый\nномер по\nсклад\-\nской\nкартотеке"},
                 {"text": "Место\-\nнахож\-\nдение"},
-                {"text": "Регистра\-\nционный\nномер\nпартии\nтовара,\nподлежа\-\nщего\nпрослежи\-\nваемости"},
+                {"text": "Регистра\-\nционный\nномер\nпартии\nтовара,\nподлежа\-\nщего\nпрослежи\-\nваемости"}
         ],
         [
                 {"text": None},
@@ -88,7 +88,7 @@ template_line_tables = [
                 {"text": None},
                 {"text": None},
                 {"text": None},
-                {"text": None},
+                {"text": None}
         ],
         [
                 {"text": "1"},
@@ -106,7 +106,7 @@ template_line_tables = [
                 {"text": "13"},
                 {"text": "14"},
                 {"text": "15"},
-                {"text": "16"},
+                {"text": "16"}
         ],
         [
                 {"text": "[\S\s]*",
@@ -141,7 +141,7 @@ template_line_tables = [
                 {"text": "[\S\s]*",
                         "save": "местонахождение"},
                 {"text": "[\S\s]*",
-                        "save": "Регистрационный номер партии товара, подлежащего прослеживаемости"},
+                        "save": "Регистрационный номер партии товара, подлежащего прослеживаемости"}
         ],
     ],
 ]
@@ -149,6 +149,7 @@ template_line_tables = [
 
 def parse_M11(path: str) -> dict[str, list[str] | str]:
     my_dict: dict[str, list[str] | str] = defaultdict(list)
+    text_array: list[str] = []
     with fitz.open(path) as doc:
         for table_index, (table, template_table) in enumerate(zip(doc[0].find_tables(), template_line_tables)):
             for line_index, line in enumerate(table.extract()):
@@ -163,74 +164,132 @@ def parse_M11(path: str) -> dict[str, list[str] | str]:
                             my_dict[template_cell["save"]] = [cell]
                         else:
                             my_dict[template_cell["save"]].append(cell)
-        text_array = []
+
         for page in doc:
             blocks = page.get_text("dict")["blocks"]
             for block in blocks:
                 for line in block["lines"]:
                     for span in line["spans"]:
                         text_array.append(span["text"])
-        data = {}
-        for i in range(len(text_array)):
-            text = text_array[i]
-            if "ТРЕБОВАНИЕ-НАКЛАДНАЯ №" in text and (1 not in data.keys()):
-                data[1] = text.split()[-1]
-            if text == "Организация" and (2 not in data.keys()):
-                data[2] = text_array[i + 1]
-            if text == "подразделение" and (3 not in data.keys()):
-                counter = i + 1
-                data[3] = ""
-                while not text_array[counter].isdigit():
-                    data[3] += text_array[counter] + " "
-                    counter += 1
-            if (text == "Через кого " or text == "Через кого") and (13 not in data.keys()):
-                counter = i + 1
-                data[13] = ""
-                while text_array[counter] != "Затребовал ":
-                    data[13] += text_array[counter] + " "
-                    counter += 1
-            if text == "Затребовал " and (11 not in data.keys()):
-                counter = i + 1
-                data[11] = ""
-                while text_array[counter] != "\xa0\xa0\xa0\xa0Разрешил":
-                    data[11] += text_array[counter] + " "
-                    counter += 1
-            if text == "\xa0\xa0\xa0\xa0Разрешил" and (12 not in data.keys()):
-                counter = i + 1
-                data[12] = ""
-                while text_array[counter] != "Материальные":
-                    data[12] += text_array[counter] + " "
-                    counter += 1
-            if text == "Отпустил" and (25 not in data.keys()):
-                counter = i + 1
-                data[25] = ""
-                while text_array[counter] != "(должность)":
-                    data[25] += text_array[counter] + " "
-                    counter += 1
-            if text == "(должность)" and (23 not in data.keys()):
-                counter = i + 1
-                data[23] = ""
-                while text_array[counter] != "(подпись)":
-                    data[23] += text_array[counter] + " "
-                    counter += 1
-            if text == "(подпись)" and (26 not in data.keys()):
-                counter = i + 1
-                data[26] = ""
-                while text_array[counter] != "(расшифровка подписи)":
-                    data[26] += text_array[counter] + " "
-                    counter += 1
-        my_dict["ТРЕБОВАНИЕ-НАКЛАДНАЯ №"].append(data[1])
-        my_dict["Организация"].append(data[2])
-        my_dict["Структурное подразделение"].append(data[3])
-        my_dict["Через кого "].append(data[13])
-        my_dict["Затребовал "].append(data[11])
-        my_dict["Разрешил"].append(data[12])
-        my_dict["отпустил -> должность"].append(data[25])
-        my_dict["отпустил -> подпись"].append(data[23])
-        my_dict["отпустил -> расшифровка подписи"].append(data[26])
+
+    def check_string_format1(input_string):
+        pattern = r"^[А-ЯЁ][а-яё]+\s[А-ЯЁ][а-яё]+\s[А-ЯЁ][а-яё]+$"
+        return bool(re.match(pattern, input_string))
+
+    def check_string_format2(input_string):
+        pattern = r"\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}|\d{2}\.\d{2}\.\d{4}\xa0\d{2}:\d{2}:\d{2}"
+        return bool(re.match(pattern, input_string))
+
+    data = {}
+    data["расшифровки комиссии"] = []
+    data["подписи комиссии"] = []
+    data["должности комиссии"] = []
+    data["организации электронной подписи"] = []
+    data["подписанты электронной подписи"] = []
+    data["сертификаты электронной подписи"] = []
+    data["даты электронной подписи"] = []
+    start_of_electronic_signatures = False
+    for i in range(len(text_array)):
+        text = text_array[i]
+        if (
+            text
+            == "Сведения об электронных подписях, соответствующих файлу электронного документа"
+        ):
+            start_of_electronic_signatures = True
+        if text == "Документ подписан электронной подписью":
+            start_of_electronic_signatures = True
+        if "ТРЕБОВАНИЕ-НАКЛАДНАЯ №" in text and (1 not in data.keys()):
+            data[1] = text.split()[-1]
+        if text == "Организация" and (2 not in data.keys()):
+            data[2] = text_array[i + 1]
+        if text == "подразделение" and (3 not in data.keys()):
+            counter = i + 1
+            data[3] = ""
+            while not text_array[counter].isdigit():
+                data[3] += text_array[counter] + " "
+                counter += 1
+        if (text == "Через кого " or text == "Через кого") and (13 not in data.keys()):
+            counter = i + 1
+            data[13] = ""
+            while text_array[counter] != "Затребовал ":
+                data[13] += text_array[counter] + " "
+                counter += 1
+        if text == "Затребовал " and (11 not in data.keys()):
+            counter = i + 1
+            data[11] = ""
+            while text_array[counter] != "\xa0\xa0\xa0\xa0Разрешил":
+                data[11] += text_array[counter] + " "
+                counter += 1
+        if text == "\xa0\xa0\xa0\xa0Разрешил" and (12 not in data.keys()):
+            counter = i + 1
+            data[12] = ""
+            while text_array[counter] != "Материальные":
+                data[12] += text_array[counter] + " "
+                counter += 1
+        if text == "Отпустил" and (25 not in data.keys()):
+            counter = i + 1
+            data[25] = ""
+            while text_array[counter] != "(должность)":
+                data[25] += text_array[counter] + " "
+                counter += 1
+        if text == "(должность)" and (23 not in data.keys()):
+            counter = i + 1
+            data[23] = ""
+            while text_array[counter] != "(подпись)":
+                data[23] += text_array[counter] + " "
+                counter += 1
+        if text == "(подпись)" and (26 not in data.keys()):
+            counter = i + 1
+            data[26] = ""
+            while text_array[counter] != "(расшифровка подписи)":
+                data[26] += text_array[counter] + " "
+                counter += 1
+
+        if start_of_electronic_signatures and (
+            text == "Дата подписи" or text == "\xa0\xa0Дата подписи"
+        ):
+            counter = i + 1
+            temp = ""
+            while counter < len(text_array) and not check_string_format1(
+                text_array[counter]
+            ):
+                temp += text_array[counter] + " "
+                counter += 1
+            if counter < len(text_array):
+                data["организации электронной подписи"].append(temp)
+                if check_string_format1(text_array[counter]):
+                    data["подписанты электронной подписи"] = text_array[counter]
+
+        if start_of_electronic_signatures and check_string_format2(text):
+            counter = i + 1
+            temp = ""
+            while counter < len(text_array) and not check_string_format1(
+                text_array[counter]
+            ):
+                temp += text_array[counter] + " "
+                counter += 1
+            if counter < len(text_array):
+                data["организации электронной подписи"].append(temp)
+                if check_string_format1(text_array[counter]):
+                    data["подписанты электронной подписи"] = text_array[counter]
+
+        if start_of_electronic_signatures and check_string_format2(text):
+            data["даты электронной подписи"].append(text)
+
+    my_dict["ТРЕБОВАНИЕ-НАКЛАДНАЯ №"].append(data[1])
+    my_dict["Организация"].append(data[2])
+    my_dict["Структурное подразделение"].append(data[3])
+    my_dict["Через кого "].append(data[13])
+    my_dict["Затребовал "].append(data[11])
+    my_dict["Разрешил"].append(data[12])
+    my_dict["отпустил -> должность"].append(data[25])
+    my_dict["отпустил -> подпись"].append(data[23])
+    my_dict["отпустил -> расшифровка подписи"].append(data[26])
+    my_dict["даты электронной подписи"] = data["даты электронной подписи"]
+    my_dict["организации электронной подписи"] = data["организации электронной подписи"]
 
     for key, value in my_dict.items():
         my_dict[key] = [x.replace("\n", "") for x in value]
 
-    my_dict['Тип формы'] = ["М_11"] # русская раскладка
+    my_dict["Тип формы"] = ["М_11"] # русская раскладка
     return my_dict
