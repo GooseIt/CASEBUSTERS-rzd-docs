@@ -31,12 +31,12 @@ M11_rules_queries = [
     '''_check_person_in_plant(cfg['doc_organization_id'], cfg['doc_subdivision_id'], cfg['doc_plant_id'], cfg['doc_mediator_str'], cursor)'''
 ]
 
-FMU76_rules_text = []
+FMU76_rules_text = ['']
 
-FMU76_rules_queries = []
+FMU76_rules_queries = ['']
 
-mydb.set_doc_type_rules("М-11", M11_rules_text, M11_rules_queries)
-mydb.set_doc_type_rules("ФМУ-76", FMU76_rules_text, FMU76_rules_queries)
+mydb.set_doc_type_rules("М_11", M11_rules_text, M11_rules_queries)
+mydb.set_doc_type_rules("ФМУ_76", FMU76_rules_text, FMU76_rules_queries)
 
 #mydb.update_knowledge_with_parsed_document({})
 

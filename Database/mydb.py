@@ -148,33 +148,67 @@ def _get_inner_repres(parsed_document: dict, cursor) -> dict:
     cfg['doc_doc_id'] = _get_doccount(cursor)
     # print(cfg['doc_doc_id'])
     
-    cfg['doc_doc_type'] = "М-11" # TODO - на парсинге Никиты
-    cfg['doc_bill_num'] = parsed_document['номер накладной']
-    cfg['doc_doc_status'] = "В очереди на проверку"
-    cfg['doc_date'] = parsed_document['дата составления']
-    cfg['org_name'] = parsed_document['организация']
-    cfg['org_OKPO_code'] = parsed_document['код по ОКПО']
+    cfg['doc_doc_type'] = parsed_document['Тип формы'][0]
     
-    cfg['doc_sender_str'] = parsed_document['структурное подразделение отправителя']
-    cfg['doc_receiver_str'] = parsed_document['структурное подразделение получателя']
-    cfg['doc_mediator_str'] =  parsed_document['через кого (может быть не только фио)']
-    
-    cfg["sub_be_code"] = parsed_document['код БЕ']
-    cfg["sub_name"] = parsed_document['структурное подразделение']
-    
-    cfg['doc_organization_id'] = _get_organization_id(cfg['org_OKPO_code'] , cfg['org_name'], cursor)
-    if cfg['doc_organization_id'] is not None:
-        cfg['doc_subdivision_id'] = _get_subdivision_id(cfg['doc_organization_id'], cfg["sub_be_code"], cfg["sub_name"], cursor)
-    else:
-        cfg['doc_subdivision_id'] = None
-    if cfg['doc_subdivision_id'] is not None:
-        cfg['doc_plant_id'] = _get_plant_id(cfg['doc_organization_id'], cfg['doc_subdivision_id'], "TODO - имя цеха", cursor)
-    else:
-        cfg['doc_plant_id'] = None
-
-    cfg['sub_subdivision_be'] = "smth" # TODO
-    cfg['sub_subdivision_name'] = "smth" # TODO
-    
+    if cfg['doc_doc_type'] == "М_11": # русская раскладка
+        cfg['doc_bill_num'] = parsed_document['ТРЕБОВАНИЕ-НАКЛАДНАЯ №'][0]
+        cfg['doc_doc_status'] = "В очереди на проверку"
+        cfg['doc_date'] = parsed_document['дата составления'][0]
+        
+        cfg['org_name'] = parsed_document['Организация'][0]
+        cfg['org_OKPO_code'] = parsed_document['код по ОКПО'][0]
+        
+        cfg['doc_demander_str'] = parsed_document['Затребовал '][0]
+        cfg['doc_permitter_str'] = parsed_document['Разрешил'][0]
+        cfg['doc_mediator_str'] =  parsed_document['Через кого '][0]
+        
+        cfg["sub_be_code"] = parsed_document['БЕ'][0]
+        cfg["sub_name"] = parsed_document['Структурное подразделение'][0]
+        
+        cfg['doc_organization_id'] = _get_organization_id(cfg['org_OKPO_code'] , cfg['org_name'], cursor)
+        if cfg['doc_organization_id'] is not None:
+            cfg['doc_subdivision_id'] = _get_subdivision_id(cfg['doc_organization_id'], cfg["sub_be_code"], cfg["sub_name"], cursor)
+        else:
+            cfg['doc_subdivision_id'] = None
+        
+        
+        subd_plant_strs = parsed_document['структурное подразделение отправителя']
+        subd_strs = []
+        plant_strs = []
+        for s_p_s in subd_plant_strs:
+            digit_indices = [i for i in range(len(s_p_s)) if s_p_s[i].isdigit()]
+            last_digit_indice = digit_indices[-1]
+            offset = 0
+            while digit_indices[-2-offset] == digit_indices[-1-offset] - 1:
+                offset += 1
+            # offset is the split point between structure and plant
+            subd_strs.append(s_p_s[:-offset])
+            plant_strs.append(s_p_s[-offset:])
+        
+        cfg['table1_sender_subd_id'] = []
+        cfg['table1_sender_plant_id'] = []
+        
+        for idx in range(len(plant_strs)):
+            subd_be = subd_strs[idx][:4]
+            subd_name = subd_strs[idx][5:]
+            plant_name = plant_strs[idx]
+            
+            if cfg['doc_organization_id'] is not None:
+                cfg['table1_sender_subd_id'].append(
+                _get_subdivision_id(cfg['doc_organization_id'], subd_be, subd_name, cursor)
+            )
+            else:
+                cfg['table1_sender_subd_id'].append(None)
+            
+            if cfg['table1_sender_subd_id'][idx] is not None:
+                cfg['table1_sender_plant_id'].append(
+                    _get_plant_id(cfg['doc_organization_id'], cfg['table1_sender_subd_id'][idx], plant_name, cursor)
+                )
+            else:
+                cfg['table1_sender_plant_id'].append(None)
+                
+        cfg['table1_operation_code'] = parsed_document['код вида операции']
+            
     return cfg
 
 def update_knowledge_with_parsed_document(parsed_document: dict):
@@ -433,13 +467,16 @@ def check_dir():
     for file in os.listdir(INPUT_DIR):
         with open(os.path.join(INPUT_DIR, file),'r') as f:
             s = f.read()
-            s = s.replace("\\xa0", "")
-            s = s.replace("'","\\xa0")
-            s = s.replace('"',"'")
-            s = s.replace("\\xa0", '"')
-            data = ast.literal_eval(s)
-            check_parsed_document(data)
-            
+            #s = s.replace("\\xa0", "")
+            #s = s.replace("'","\\xa0")
+            #s = s.replace('"',"'")
+            #s = s.replace("\\xa0", '"')
+            s = s.replace('''<class "list">''', "list")
+            s = s.replace('''<class 'list'>''', "list")
+            if s != "Parsing failed":
+                data = eval(s)
+                check_parsed_document(data)
+
 
 def update_dir():
     try:
@@ -457,10 +494,14 @@ def update_dir():
     for file in os.listdir(INPUT_DIR):
         with open(os.path.join(INPUT_DIR, file),'r') as f:
             s = f.read()
-            s = s.replace("\\xa0", "")
-            s = s.replace("'","\\xa0")
-            s = s.replace('"',"'")
-            s = s.replace("\\xa0", '"')
-            data = ast.literal_eval(s)
-            update_knowledge_with_parsed_document(data)
+            #s = s.replace("\\xa0", "")
+            #s = s.replace("'","\\xa0")
+            #s = s.replace('"',"'")
+            #s = s.replace("\\xa0", '"')
+            s = s.replace('''<class "list">''', "list")
+            s = s.replace('''<class 'list'>''', "list")
+            if s != "Parsing failed":
+                # print(s)
+                data = eval(s)
+                update_knowledge_with_parsed_document(data)
 

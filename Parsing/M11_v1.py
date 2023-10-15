@@ -107,11 +107,8 @@ def parse_M11(path):
     my_dict['отпустил -> расшифровка подписи'].append(data[26])
     
     for key, value in my_dict.items():
-        if type(value) == str:
-            my_dict[key] = value.replace("\n", "")
-        else:
-            my_dict[key] = [x.replace("\n", "") for x in value]
+        my_dict[key] = [x.replace("\n", "") for x in value]
             
-    my_dict['Тип формы'] = "М-11"
+    my_dict['Тип формы'] = ["М_11"] # русская раскладка
     return my_dict
 
